@@ -31,6 +31,8 @@ import { MinswapV2Analyzer } from './dex/MinswapV2Analyzer';
 import { SundaeSwapV3Analyzer } from './dex/SundaeSwapV3Analyzer';
 import { WingRidersV2Analyzer } from './dex/WingRidersV2Analyzer';
 import { SplashAnalyzer } from './dex/SplashAnalyzer';
+import config from './config';
+import { SplashPreprodAnalyzer } from './dex/SplashPreprodAnalyzer';
 
 export class IndexerApplication {
 
@@ -43,26 +45,33 @@ export class IndexerApplication {
     /**
      * Indexers to make aware of new blocks & rollbacks.
      */
-    private _indexers: BaseIndexer[] = [
+    private _indexers: BaseIndexer[] = config.NETWORK === 'mainnet'
+        ? [
+            new SyncIndexer(),
+            new AmmDexTransactionIndexer([
+                new MinswapAnalyzer(this),
+                new MinswapV2Analyzer(this),
+                new SundaeSwapAnalyzer(this),
+                new SundaeSwapV3Analyzer(this),
+                new WingRidersAnalyzer(this),
+                new WingRidersV2Analyzer(this),
+                new SpectrumAnalyzer(this),
+                new SplashAnalyzer(this),
+                new TeddySwapAnalyzer(this),
+                new VyFiAnalyzer(this),
+            ]),
+            new OrderBookDexTransactionIndexer([
+                // new GeniusYieldAnalyzer(this),
+                // new AxoAnalyzer(this),
+            ]),
+            new HybridDexTransactionIndexer([
+                new MuesliSwapAnalyzer(this),
+            ]),
+        ]
+    : [
         new SyncIndexer(),
         new AmmDexTransactionIndexer([
-            new MinswapAnalyzer(this),
-            new MinswapV2Analyzer(this),
-            new SundaeSwapAnalyzer(this),
-            new SundaeSwapV3Analyzer(this),
-            new WingRidersAnalyzer(this),
-            new WingRidersV2Analyzer(this),
-            new SpectrumAnalyzer(this),
-            new SplashAnalyzer(this),
-            new TeddySwapAnalyzer(this),
-            new VyFiAnalyzer(this),
-        ]),
-        new OrderBookDexTransactionIndexer([
-            // new GeniusYieldAnalyzer(this),
-            // new AxoAnalyzer(this),
-        ]),
-        new HybridDexTransactionIndexer([
-            new MuesliSwapAnalyzer(this),
+            new SplashPreprodAnalyzer(this),
         ]),
     ];
 
