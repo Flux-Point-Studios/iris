@@ -185,6 +185,9 @@ export class AssetController extends BaseApiController {
         const {
             asset,
         } = request.params;
+        const {
+            baseTokenIdentifier,
+        } = request.query;
 
         if (! asset) {
             return response.send(super.failResponse("Must supply 'asset'"));
@@ -208,6 +211,7 @@ export class AssetController extends BaseApiController {
                 return response.send({ price: 0 });
             }
 
+            const inverse = Boolean(baseTokenIdentifier && baseTokenIdentifier === liquidityPools[0].tokenB.identifier('.'))
             const tokenADecimals: number = 6;
             const tokenBDecimals: number = liquidityPools[0].tokenB.decimals ?? 0;
 
@@ -218,7 +222,7 @@ export class AssetController extends BaseApiController {
                 return total + Number(pool.latestState.reserveB) / 10**tokenBDecimals;
             }, 0);
 
-            return response.send({ price: totalReserveA / totalReserveB });
+            return response.send({ price: inverse ? (1 / totalReserveA / totalReserveB) : (totalReserveA / totalReserveB) });
         }).catch(() => response.send('Unable to retrieve asset price'));
     }
 

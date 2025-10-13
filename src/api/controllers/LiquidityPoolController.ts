@@ -35,6 +35,7 @@ export class LiquidityPoolController extends BaseApiController {
         this.router.post(`${this.basePath}/states/historic`, this.liquidityPoolStatesHistoric);
 
         this.router.get(`${this.basePath}/:identifier`, this.liquidityPool);
+        this.router.get(`${this.basePath}/:identifier/stats`, this.liquidityPoolStats);
         this.router.get(`${this.basePath}/:identifier/ticks`, this.liquidityPoolTicks);
         this.router.get(`${this.basePath}/:identifier/swaps`, this.liquidityPoolSwaps);
         this.router.get(`${this.basePath}/:identifier/deposits`, this.liquidityPoolDeposits);
@@ -370,6 +371,41 @@ export class LiquidityPoolController extends BaseApiController {
         }).catch(() => response.send(super.failResponse('Unable to retrieve liquidity pool')));
     }
 
+    private async liquidityPoolStats(request: express.Request, response: express.Response) {
+        const {
+            identifier,
+        } = request.params;
+
+        if (! identifier) {
+            return response.send(super.failResponse("Must supply 'identifier'"));
+        }
+
+        const liquidityPool = await dbApiService.query((manager: EntityManager) => {
+            return manager.createQueryBuilder(LiquidityPool, 'pools')
+                .where('pools.identifier = :identifier', {
+                    identifier,
+                })
+                .limit(1)
+                .getOne();
+        });
+
+        if (! liquidityPool) {
+            return response.send(super.failResponse("Liquidity pool not found"));
+        }
+
+        const ordersCount = await dbApiService.query((manager: EntityManager) => {
+            return manager.createQueryBuilder(LiquidityPoolSwap, 'swaps')
+                .where('swaps.liquidityPoolId = :id', {
+                    id: liquidityPool.id,
+                })
+                .getCount();
+        });
+
+        return response.send({
+            orders: ordersCount,
+        });
+    }
+
     private liquidityPoolTicks(request: express.Request, response: express.Response) {
         const {
             identifier,
@@ -379,6 +415,7 @@ export class LiquidityPoolController extends BaseApiController {
             fromTime,
             toTime,
             orderBy,
+            baseTokenIdentifier,
         } = request.query;
 
         if (! identifier) {
@@ -391,46 +428,65 @@ export class LiquidityPoolController extends BaseApiController {
             return response.send(super.failResponse("orderBy must be 'ASC' or 'DESC'"));
         }
 
+        let inverse: boolean = false;
+
         const fetchTicks: any = (manager: EntityManager) => {
-            return manager.findOneBy(LiquidityPool, {
-                identifier,
-            }).then((pool: LiquidityPool | null) => {
-                if (! pool) {
-                    return Promise.reject('Unable to find liquidity pool');
-                }
+            return manager.createQueryBuilder(LiquidityPool, 'pools')
+                .leftJoinAndSelect('pools.tokenA', 'tokenA')
+                .leftJoinAndSelect('pools.tokenB', 'tokenB')
+                .where('pools.identifier = :identifier', {
+                    identifier,
+                })
+                .limit(1)
+                .getOne()
+                .then((pool: LiquidityPool | null) => {
+                    if (! pool) {
+                        return Promise.reject('Unable to find liquidity pool');
+                    }
 
-                return manager.createQueryBuilder(LiquidityPoolTick, 'ticks')
-                    .where(
-                        new Brackets((query) => {
-                            query.where('ticks.liquidityPoolId = :poolId', {
-                                poolId: pool.id,
-                            }).andWhere('ticks.resolution = :resolution', {
-                                resolution,
-                            });
+                    inverse = Boolean(baseTokenIdentifier && baseTokenIdentifier === pool.tokenB.identifier('.'))
 
-                            if (fromTime && ! isNaN(parseInt(fromTime as string))) {
-                                query.andWhere('ticks.time >= :fromTime', {
-                                    fromTime: parseInt(fromTime as string),
+                    return manager.createQueryBuilder(LiquidityPoolTick, 'ticks')
+                        .where(
+                            new Brackets((query) => {
+                                query.where('ticks.liquidityPoolId = :poolId', {
+                                    poolId: pool.id,
+                                }).andWhere('ticks.resolution = :resolution', {
+                                    resolution,
                                 });
-                            }
 
-                            if (toTime && ! isNaN(parseInt(toTime as string))) {
-                                query.andWhere('ticks.time <= :toTime', {
-                                    toTime: parseInt(toTime as string),
-                                });
-                            }
+                                if (fromTime && ! isNaN(parseInt(fromTime as string))) {
+                                    query.andWhere('ticks.time >= :fromTime', {
+                                        fromTime: parseInt(fromTime as string),
+                                    });
+                                }
 
-                            return query;
-                        }),
-                    )
-                    .orderBy('time', orderBy ? (orderBy as 'ASC' | 'DESC') : 'ASC')
-                    .getMany();
-            });
+                                if (toTime && ! isNaN(parseInt(toTime as string))) {
+                                    query.andWhere('ticks.time <= :toTime', {
+                                        toTime: parseInt(toTime as string),
+                                    });
+                                }
+
+                                return query;
+                            }),
+                        )
+                        .orderBy('time', orderBy ? (orderBy as 'ASC' | 'DESC') : 'ASC')
+                        .getMany();
+                });
         };
 
         return dbApiService.query(fetchTicks)
             .then((ticks: LiquidityPoolTick[]) => {
                 const resource: LiquidityPoolTickResource = new LiquidityPoolTickResource();
+
+                if (inverse) {
+                    ticks.forEach((tick: LiquidityPoolTick) => {
+                        tick.open = 1 / tick.open;
+                        tick.close = 1 / tick.close;
+                        tick.high = 1 / tick.high;
+                        tick.low = 1 / tick.low;
+                    });
+                }
 
                 response.send(resource.manyToJson(ticks));
             }).catch((e) => response.send(super.failResponse(e)));
@@ -767,9 +823,12 @@ export class LiquidityPoolController extends BaseApiController {
         const {
             identifiers,
         } = request.body;
+        const {
+            baseTokenIdentifier,
+        } = request.query;
 
         if (! identifiers || identifiers.length === 0) {
-             return response.send([]);
+            return response.send([]);
         }
 
         return dbApiService.query((manager: EntityManager) => {
@@ -806,19 +865,33 @@ export class LiquidityPoolController extends BaseApiController {
                 results.reduce((prices: Object[], entry: any) => {
                     if (! entry.latestState) return prices;
 
+                    const inverse: boolean = Boolean(baseTokenIdentifier && baseTokenIdentifier === entry.tokenB.identifier('.'));
                     const tokenADecimals: number = entry.tokenA ? entry.tokenA.decimals : 6;
                     const tokenBDecimals: number = entry.tokenB.decimals ?? 0;
 
-                    const price: number = (entry.latestState.reserveA / 10**tokenADecimals) / (entry.latestState.reserveB / 10**tokenBDecimals);
+                    const price: number = inverse
+                        ? 1 / ((entry.latestState.reserveA / 10**tokenADecimals) / (entry.latestState.reserveB / 10**tokenBDecimals))
+                        : (entry.latestState.reserveA / 10**tokenADecimals) / (entry.latestState.reserveB / 10**tokenBDecimals);
 
-                    prices.push({
-                        identifier: entry.identifier,
-                        price: price,
-                        dayLow: entry.day_tick ? Math.min(entry.day_tick.low, price) : price,
-                        dayHigh: entry.day_tick ? Math.max(entry.day_tick.high, price) : price,
-                        dayChange: ! entry.day_tick ? 0 : (price - entry.day_tick.close) / entry.day_tick.close * 100,
-                        hourChange: ! entry.hour_tick ? 0 : (price - entry.hour_tick.open) / entry.hour_tick.open * 100,
-                    });
+                    prices.push(
+                        inverse
+                            ? {
+                                identifier: entry.identifier,
+                                price: price,
+                                dayLow: entry.day_tick ? Math.min(1 / entry.day_tick.low, price) : price,
+                                dayHigh: entry.day_tick ? Math.max(1 / entry.day_tick.high, price) : price,
+                                dayChange: ! entry.day_tick ? 0 : (price - (1 / entry.day_tick.close)) / (1 / entry.day_tick.close) * 100,
+                                hourChange: ! entry.hour_tick ? 0 : (price - (1 / entry.hour_tick.open)) / (1 / entry.hour_tick.open) * 100,
+                            }
+                            : {
+                                identifier: entry.identifier,
+                                price: price,
+                                dayLow: entry.day_tick ? Math.min(entry.day_tick.low, price) : price,
+                                dayHigh: entry.day_tick ? Math.max(entry.day_tick.high, price) : price,
+                                dayChange: ! entry.day_tick ? 0 : (price - entry.day_tick.close) / entry.day_tick.close * 100,
+                                hourChange: ! entry.hour_tick ? 0 : (price - entry.hour_tick.open) / entry.hour_tick.open * 100,
+                            }
+                    );
 
                     return prices;
                 }, [])
