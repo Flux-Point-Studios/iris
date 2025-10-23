@@ -1,4 +1,5 @@
 import { DatumParameterKey } from '../../../constants';
+import { DatumParameters, DefinitionField } from '../../../types';
 
 /**
  * https://github.com/minswap/minswap-dex-v2/blob/main/src/types/order.ts
@@ -80,9 +81,8 @@ export default {
         }
       ]
     },
-    {
-      constructor: 0,
-      fields: []
+    (field: DefinitionField, parameters: DatumParameters, shouldExtract: boolean = true) => {
+      return;
     },
     {
       constructor: 0,
