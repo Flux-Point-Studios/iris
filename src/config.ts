@@ -7,6 +7,10 @@ type Config = {
     LOG_DIR: string,
     VERBOSE: boolean,
 
+    SATURN_API_BASE: string,
+    SATURN_POOL_SYNC_ENABLED: boolean,
+    SATURN_POOL_SYNC_INTERVAL_SECONDS: number,
+
     OGMIOS_HOST: string,
     OGMIOS_PORT: number,
     OGMIOS_TLS: boolean,
@@ -29,6 +33,10 @@ const CONFIG: Config = {
     NETWORK: process.env.NETWORK || 'mainnet',
     LOG_DIR: process.env.LOG_DIR || 'logs',
     VERBOSE: process.env.VERBOSE === 'true',
+
+    SATURN_API_BASE: process.env.SATURN_API_BASE || '',
+    SATURN_POOL_SYNC_ENABLED: process.env.SATURN_POOL_SYNC_ENABLED === 'true',
+    SATURN_POOL_SYNC_INTERVAL_SECONDS: Number(process.env.SATURN_POOL_SYNC_INTERVAL_SECONDS) || 300,
 
     OGMIOS_HOST: process.env.OGMIOS_HOST || 'localhost',
     OGMIOS_PORT: Number(process.env.OGMIOS_PORT) || 1337,

@@ -68,6 +68,18 @@ Depending on the type of DEX, they inherit the BaseAnalyzer of their type: AMM, 
 Hybrid analyzers are strictly used for DEXs that support both liquidity pools & order books, such as MuesliSwap.
 <br>
 <br>
+Currently supported DEXs:
+- Minswap (v1 & v2)
+- SundaeSwap (v1 & v3)
+- WingRiders (v1 & v2)
+- Spectrum
+- Splash
+- TeddySwap
+- VyFinance
+- MuesliSwap (hybrid)
+- SaturnSwap (AMM facade)
+<br>
+<br>
 The route for a transaction in which has a swap order for example, follows this flow :
 1. Transaction is sent to each analyzer
 2. Swap order is picked up by the appropriate DEX analyzer (Others will ignore)

@@ -33,6 +33,9 @@ import { WingRidersV2Analyzer } from './dex/WingRidersV2Analyzer';
 import { SplashAnalyzer } from './dex/SplashAnalyzer';
 import config from './config';
 import { SplashPreprodAnalyzer } from './dex/SplashPreprodAnalyzer';
+import { SaturnSwapAnalyzer } from './dex/SaturnSwapAnalyzer';
+import { saturnDefinitions } from './services/SaturnDefinitionProvider';
+import { saturnPoolSync } from './services/SaturnPoolSyncService';
 
 export class IndexerApplication {
 
@@ -59,6 +62,7 @@ export class IndexerApplication {
                 new SplashAnalyzer(this),
                 new TeddySwapAnalyzer(this),
                 new VyFiAnalyzer(this),
+                new SaturnSwapAnalyzer(this),
             ]),
             new OrderBookDexTransactionIndexer([
                 // new GeniusYieldAnalyzer(this),
@@ -135,6 +139,8 @@ export class IndexerApplication {
             operationWs.boot(),
             metadataService.boot(),
             queue.boot(),
+            saturnDefinitions.boot(),
+            saturnPoolSync.boot(),
         ]).then(() => {
             logInfo('Services booted');
         }).catch((reason) => {
